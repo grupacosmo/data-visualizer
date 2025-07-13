@@ -1,19 +1,24 @@
-use std::{collections::VecDeque, fs::File, io::{BufRead, BufReader}, sync::{Arc, Mutex}, thread};
-use std::ops::RangeInclusive;
 use eframe::Frame;
 use egui::{Color32, Context, Vec2b, ViewportBuilder};
-use std::time::Duration;
 use egui_plot::{Line, Plot, PlotPoints};
 use serialport::{ErrorKind, SerialPort};
+use std::ops::RangeInclusive;
+use std::time::Duration;
+use std::{
+    collections::VecDeque,
+    fs::File,
+    io::{BufRead, BufReader},
+    sync::{Arc, Mutex},
+    thread,
+};
 
 pub const DEFAULT_CAPACITY: usize = 100_000;
 pub const DEFAULT_BAUDRATE: u32 = 115_200;
 pub const COMMON_BAUDRATES: [u32; 14] = [
-    110, 150, 300, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600
+    110, 150, 300, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600,
 ];
 
 pub const EMPTY_PORT: &str = "Select Port";
-
 
 #[derive(Debug, Clone)]
 enum DataInput {
@@ -43,13 +48,12 @@ impl PartialEq for DataInput {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (DataInput::None, DataInput::None) => true,
-            (DataInput::SerialPort(_,_), DataInput::SerialPort(_,_)) => true,
+            (DataInput::SerialPort(_, _), DataInput::SerialPort(_, _)) => true,
             (DataInput::File(_), DataInput::File(_)) => true,
             _ => false,
         }
     }
 }
-
 
 #[derive(Debug)]
 pub struct Data {
@@ -112,7 +116,7 @@ pub struct VisualizerApp {
 
 impl VisualizerApp {
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
-        let data = Data{
+        let data = Data {
             data_points: DEFAULT_CAPACITY,
             lc_all: VecDeque::with_capacity(DEFAULT_CAPACITY),
             ps_all: VecDeque::with_capacity(DEFAULT_CAPACITY),
@@ -128,7 +132,7 @@ impl VisualizerApp {
             ui_data: UiData {
                 port_list: scan_serial_ports(),
                 ..UiData::default()
-            }
+            },
         };
         slf.spawn_input_consumer();
 
@@ -152,7 +156,10 @@ impl VisualizerApp {
                     Some(p) => serialport::new(p, *boudrate)
                         .timeout(Duration::from_millis(1000))
                         .open(),
-                    None => Err(serialport::Error::new(ErrorKind::InvalidInput, "No port selected")),
+                    None => Err(serialport::Error::new(
+                        ErrorKind::InvalidInput,
+                        "No port selected",
+                    )),
                 };
 
                 match serial_port {
@@ -202,7 +209,8 @@ impl VisualizerApp {
         println!("[PORT][INF]### Starting to read from port...");
         loop {
             buffer.clear();
-            if {data_arc.lock().unwrap().request_stop} { // TODO better communication
+            if { data_arc.lock().unwrap().request_stop } {
+                // TODO better communication
                 eprintln!("[PORT][INF]### Request to stop reading from port.");
                 break;
             }
@@ -246,7 +254,7 @@ impl VisualizerApp {
 
         let parts = line.split(',').collect::<Vec<&str>>();
         let t = parts[0];
-        let time  = parts[1].parse::<u64>();
+        let time = parts[1].parse::<u64>();
         let value = parts[2].trim().parse::<f64>();
 
         match (time, value) {
@@ -261,36 +269,59 @@ impl VisualizerApp {
                 Self::process_file_data(data_arc, csv_line);
             }
             (Err(te), Err(ve)) => {
-                eprintln!("[PORT][ERR]### Failed to parse time: {} (Error: {}) and value: {} (Error: {})", parts[1], parts[2], te, ve);
+                eprintln!(
+                    "[PORT][ERR]### Failed to parse time: {} (Error: {}) and value: {} (Error: {})",
+                    parts[1], parts[2], te, ve
+                );
             }
             (Err(e), _) => {
-                eprintln!("[PORT][ERR]### Failed to parse time: {}. Error: {}", parts[1], e);
+                eprintln!(
+                    "[PORT][ERR]### Failed to parse time: {}. Error: {}",
+                    parts[1], e
+                );
             }
             (_, Err(e)) => {
-                eprintln!("[PORT][ERR]### Failed to parse value: {}. Error: {}", parts[2], e);
+                eprintln!(
+                    "[PORT][ERR]### Failed to parse value: {}. Error: {}",
+                    parts[2], e
+                );
             }
         }
     }
 
-    fn update_stats(mut stats: Stats, value: f64, all_data: &VecDeque<DataRecord>, latest_size: usize) -> Stats {
+    fn update_stats(
+        mut stats: Stats,
+        value: f64,
+        all_data: &VecDeque<DataRecord>,
+        latest_size: usize,
+    ) -> Stats {
         stats.max = stats.max.max(value);
         stats.min = stats.min.min(value);
         stats.latest_max = stats.latest_max.max(value);
         stats.latest_min = stats.latest_min.min(value);
         let corrected_latest_size = all_data.len().min(latest_size);
-        stats.latest_avg = all_data.iter()
-            .skip(all_data.len().checked_sub(corrected_latest_size).unwrap_or(0))
+        stats.latest_avg = all_data
+            .iter()
+            .skip(
+                all_data
+                    .len()
+                    .checked_sub(corrected_latest_size)
+                    .unwrap_or(0),
+            )
             .map(|r| r.value)
-            .sum::<f64>() / corrected_latest_size as f64;
+            .sum::<f64>()
+            / corrected_latest_size as f64;
 
         stats
     }
 
     fn process_file_data(data_arc: &Arc<Mutex<Data>>, csv_line: FileCsvLine) {
-
         let mut data = data_arc.lock().unwrap();
         // eprintln!("{:?}", measurements);
-        let record = DataRecord {time: csv_line.time, value: csv_line.value};
+        let record = DataRecord {
+            time: csv_line.time,
+            value: csv_line.value,
+        };
         if record.value.is_nan() {
             eprintln!("[PORT][ERR]### Received NaN value, skipping record.");
             return;
@@ -298,13 +329,23 @@ impl VisualizerApp {
 
         //println!("[PORT][  RECORD  ]### Type: {}, Time: {}, Value: {}", csv_line.typ, record.time, record.value);
         if csv_line.typ == "lc" {
-            data.lc_stats = Self::update_stats(data.lc_stats.clone(), record.value, &data.lc_all, data.latest_size);
+            data.lc_stats = Self::update_stats(
+                data.lc_stats.clone(),
+                record.value,
+                &data.lc_all,
+                data.latest_size,
+            );
             data.lc_all.push_back(record);
             if data.lc_all.len() > data.data_points {
                 data.lc_all.pop_front();
             }
         } else if csv_line.typ == "ps" {
-            data.ps_stats = Self::update_stats(data.ps_stats.clone(), record.value, &data.ps_all, data.latest_size);
+            data.ps_stats = Self::update_stats(
+                data.ps_stats.clone(),
+                record.value,
+                &data.ps_all,
+                data.latest_size,
+            );
             data.ps_all.push_back(record);
             if data.ps_all.len() > data.data_points {
                 data.ps_all.pop_front();
@@ -344,21 +385,40 @@ impl VisualizerApp {
         });
     }
 
-
     fn draw_input_selector(&mut self, ui: &mut egui::Ui, data: &mut Data) {
         let mut selected_input = self.ui_data.selected_input.clone();
         egui::ComboBox::from_id_salt("input_selector")
             .selected_text(selected_input.str())
             .show_ui(ui, |ui| {
                 let mut value_changed = false;
-                value_changed |= ui.selectable_value(&mut selected_input, DataInputUi::None,       DataInputUi::None.str()).clicked();
-                value_changed |= ui.selectable_value(&mut selected_input, DataInputUi::File,       DataInputUi::File.str()).clicked();
-                value_changed |= ui.selectable_value(&mut selected_input, DataInputUi::SerialPort, DataInputUi::SerialPort.str()).clicked();
+                value_changed |= ui
+                    .selectable_value(
+                        &mut selected_input,
+                        DataInputUi::None,
+                        DataInputUi::None.str(),
+                    )
+                    .clicked();
+                value_changed |= ui
+                    .selectable_value(
+                        &mut selected_input,
+                        DataInputUi::File,
+                        DataInputUi::File.str(),
+                    )
+                    .clicked();
+                value_changed |= ui
+                    .selectable_value(
+                        &mut selected_input,
+                        DataInputUi::SerialPort,
+                        DataInputUi::SerialPort.str(),
+                    )
+                    .clicked();
                 if value_changed {
                     data.data_input = match selected_input {
                         DataInputUi::None => DataInput::None,
                         DataInputUi::File => DataInput::File(self.ui_data.file_path.clone()),
-                        DataInputUi::SerialPort => DataInput::SerialPort(None, self.ui_data.boundrate),
+                        DataInputUi::SerialPort => {
+                            DataInput::SerialPort(None, self.ui_data.boundrate)
+                        }
                     };
                     println!("[ UI ][INF] Selected input: {:?}", selected_input);
                     self.ui_data.selected_input = selected_input.clone();
@@ -368,30 +428,35 @@ impl VisualizerApp {
         match selected_input {
             DataInputUi::None => return,
             DataInputUi::File => self.draw_input_file_selector(ui, data),
-            DataInputUi::SerialPort => self.draw_input_serial_port_selector(ui, data)
+            DataInputUi::SerialPort => self.draw_input_serial_port_selector(ui, data),
         };
-
 
         if !data.is_serial_port_open {
             if ui.button("Connect").clicked() {
                 self.spawn_input_consumer()
             }
-        }
-        else if ui.button("Disconnect").clicked() {
+        } else if ui.button("Disconnect").clicked() {
             eprintln!("[PORT][INF]### Disconnecting from port (kind of)");
             // TODO: better Disconnect logic
             data.request_stop = true;
         }
     }
     fn draw_input_file_selector(&mut self, ui: &mut egui::Ui, data: &mut Data) {
-        if ui.text_edit_singleline(&mut self.ui_data.file_path).changed() {
+        if ui
+            .text_edit_singleline(&mut self.ui_data.file_path)
+            .changed()
+        {
             data.data_input = DataInput::File(self.ui_data.file_path.clone());
             println!("[ UI ][INF] Selected file: {:?}", self.ui_data.file_path);
         }
     }
     fn draw_input_serial_port_selector(&mut self, ui: &mut egui::Ui, data: &mut Data) {
-        let DataInput::SerialPort(mut selected_port,mut selected_baudrate) = data.data_input.clone() else {
-            eprintln!("[ UI ][ERR]### drawing serial port selector but Data Input is not a serial port");
+        let DataInput::SerialPort(mut selected_port, mut selected_baudrate) =
+            data.data_input.clone()
+        else {
+            eprintln!(
+                "[ UI ][ERR]### drawing serial port selector but Data Input is not a serial port"
+            );
             return;
         };
 
@@ -401,9 +466,13 @@ impl VisualizerApp {
         egui::ComboBox::from_id_salt("port_selector")
             .selected_text(selected_port.clone().unwrap_or(EMPTY_PORT.to_string()))
             .show_ui(ui, |ui| {
-                value_changed = ui.selectable_value(&mut selected_port, None, EMPTY_PORT.to_string()).clicked();
+                value_changed = ui
+                    .selectable_value(&mut selected_port, None, EMPTY_PORT.to_string())
+                    .clicked();
                 for port in ports {
-                    value_changed |= ui.selectable_value(&mut selected_port, Some(port.clone()), port).clicked();
+                    value_changed |= ui
+                        .selectable_value(&mut selected_port, Some(port.clone()), port)
+                        .clicked();
                 }
             });
 
@@ -415,15 +484,19 @@ impl VisualizerApp {
             .selected_text(selected_baudrate.to_string())
             .show_ui(ui, |ui| {
                 for baudrate in COMMON_BAUDRATES {
-                    value_changed |= ui.selectable_value(&mut selected_baudrate, baudrate, baudrate.to_string()).clicked();
+                    value_changed |= ui
+                        .selectable_value(&mut selected_baudrate, baudrate, baudrate.to_string())
+                        .clicked();
                 }
             });
 
         if value_changed {
-            println!("[ UI ][INF] Selected serial port: {:?} at baudrate: {}", selected_port, selected_baudrate);
+            println!(
+                "[ UI ][INF] Selected serial port: {:?} at baudrate: {}",
+                selected_port, selected_baudrate
+            );
             data.data_input = DataInput::SerialPort(selected_port, selected_baudrate);
         }
-
     }
 }
 
@@ -434,9 +507,7 @@ impl eframe::App for VisualizerApp {
     }
 }
 
-
 fn draw_chart(ui: &mut egui::Ui, data: &Data) {
-
     egui_extras::StripBuilder::new(ui)
         .sizes(egui_extras::Size::relative(2f32.recip()), 2)
         .vertical(|mut vstrip| {
@@ -445,49 +516,80 @@ fn draw_chart(ui: &mut egui::Ui, data: &Data) {
                     .sizes(egui_extras::Size::relative(2f32.recip()), 2)
                     .horizontal(|mut hstrip| {
                         hstrip.cell(|ui| {
-                            let lc_points: Vec<[f64; 2]> = data.lc_all.iter()
+                            let lc_points: Vec<[f64; 2]> = data
+                                .lc_all
+                                .iter()
                                 .skip(data.lc_all.len().checked_sub(data.latest_size).unwrap_or(0))
                                 .map(|p| [p.time as f64 / 1000.0, p.value])
                                 .collect();
-                            draw_plot(ui, "latest lc", vec![
-                                PlotData { name: "Load Cell", points: lc_points, color: Color32::RED },
-                            ]);
+                            draw_plot(
+                                ui,
+                                "latest lc",
+                                vec![PlotData {
+                                    name: "Load Cell",
+                                    points: lc_points,
+                                    color: Color32::RED,
+                                }],
+                            );
                         });
                         hstrip.cell(|ui| {
-                            let ps_points: Vec<[f64; 2]> = data.ps_all.iter()
+                            let ps_points: Vec<[f64; 2]> = data
+                                .ps_all
+                                .iter()
                                 .skip(data.ps_all.len().checked_sub(data.latest_size).unwrap_or(0))
                                 .map(|p| [p.time as f64 / 1000.0, p.value])
                                 .collect();
-                            draw_plot(ui, "latest ps", vec![
-                                PlotData { name: "Pressure Sensor", points: ps_points, color: Color32::BLUE }
-                            ]);
+                            draw_plot(
+                                ui,
+                                "latest ps",
+                                vec![PlotData {
+                                    name: "Pressure Sensor",
+                                    points: ps_points,
+                                    color: Color32::BLUE,
+                                }],
+                            );
                         });
                     });
             });
             vstrip.cell(|ui| {
-                let lc_points: Vec<[f64; 2]> = data.lc_all.iter()
+                let lc_points: Vec<[f64; 2]> = data
+                    .lc_all
+                    .iter()
                     .map(|p| [p.time as f64 / 1000.0, p.value])
                     .collect();
-                let ps_points: Vec<[f64; 2]> = data.ps_all.iter()
+                let ps_points: Vec<[f64; 2]> = data
+                    .ps_all
+                    .iter()
                     .map(|p| [p.time as f64 / 1000.0, p.value])
                     .collect();
 
-                draw_plot(ui,  "All", vec![
-                    PlotData { name: "Load Cell", points: lc_points, color: Color32::RED },
-                    PlotData { name: "Pressure Sensor", points: ps_points, color: Color32::BLUE }
-                ]);
+                draw_plot(
+                    ui,
+                    "All",
+                    vec![
+                        PlotData {
+                            name: "Load Cell",
+                            points: lc_points,
+                            color: Color32::RED,
+                        },
+                        PlotData {
+                            name: "Pressure Sensor",
+                            points: ps_points,
+                            color: Color32::BLUE,
+                        },
+                    ],
+                );
             })
         });
-        //.x_axis_formatter(|value, _| timestamp_formatter(value));
+    //.x_axis_formatter(|value, _| timestamp_formatter(value));
 }
 
 struct PlotData<'a> {
     name: &'a str,
     points: Vec<[f64; 2]>,
-    color: Color32
+    color: Color32,
 }
 fn draw_plot(ui: &mut egui::Ui, plot_name: &str, lines: Vec<PlotData>) {
-
     Plot::new(plot_name)
         // .include_y(0)
         // .include_y(100)
@@ -502,7 +604,6 @@ fn draw_plot(ui: &mut egui::Ui, plot_name: &str, lines: Vec<PlotData>) {
         });
 }
 
-
 fn scan_serial_ports() -> Vec<String> {
     let ports = serialport::available_ports().unwrap_or_default();
     ports.into_iter().map(|p| p.port_name).collect()
@@ -510,8 +611,7 @@ fn scan_serial_ports() -> Vec<String> {
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
-        viewport: ViewportBuilder::default()
-            .with_inner_size(egui::Vec2::new(1280.0, 720.0)),
+        viewport: ViewportBuilder::default().with_inner_size(egui::Vec2::new(1280.0, 720.0)),
         ..eframe::NativeOptions::default()
     };
 
