@@ -1,16 +1,12 @@
+use chrono::Local;
 use eframe::Frame;
 use egui::{Color32, Context, Vec2b, ViewportBuilder};
-use egui_plot::{Line, Plot, PlotPoints};
+use egui_plot::{format_number, Line, Plot, PlotPoints};
 use serialport::{ErrorKind, SerialPort};
 use std::ops::RangeInclusive;
 use std::time::Duration;
-use std::{
-    collections::VecDeque,
-    fs::File,
-    io::{BufRead, BufReader},
-    sync::{Arc, Mutex},
-    thread,
-};
+use std::{collections::VecDeque, fs, fs::File, io::{BufRead, BufReader}, sync::{Arc, Mutex}, thread};
+use std::io::Write;
 
 pub const DEFAULT_CAPACITY: usize = 100_000;
 pub const DEFAULT_BAUDRATE: u32 = 115_200;
@@ -205,8 +201,12 @@ impl VisualizerApp {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_millis();
-
         println!("[PORT][INF]### Starting to read from port...");
+        let curr_date_time = Local::now().format("%Y-%m-%d--%H:%M:%S").to_string();
+        let mut output_file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(format!("~/data_{}", curr_date_time)).unwrap();
         loop {
             buffer.clear();
             if { data_arc.lock().unwrap().request_stop } {
@@ -222,6 +222,7 @@ impl VisualizerApp {
                     break;
                 }
                 Ok(_) => {
+                    output_file.write(buffer.as_bytes()).expect("TODO: panic message");
                     Self::process_input_line(&data_arc, &buffer);
                     // let now = std::time::SystemTime::now()
                     //     .duration_since(std::time::UNIX_EPOCH)
