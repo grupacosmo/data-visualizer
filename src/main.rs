@@ -379,12 +379,6 @@ impl VisualizerApp {
                     ui.add(egui::DragValue::new(&mut data.latest_size).range(RangeInclusive::new(0, i32::MAX)));
                     self.draw_input_selector(ui, data);
                 });
-                ui.horizontal(|ui| {
-                    ui.label(format!("LC Stats: Max: {:.2}, Min: {:.2}, Latest Max: {:.2}, Latest Min: {:.2}, Latest Avg: {:.2}",
-                        data.lc_stats.max, data.lc_stats.min, data.lc_stats.latest_max, data.lc_stats.latest_min, data.lc_stats.latest_avg));
-                    ui.label(format!("PS Stats: Max: {:.2}, Min: {:.2}, Latest Max: {:.2}, Latest Min: {:.2}, Latest Avg: {:.2}",
-                        data.ps_stats.max, data.ps_stats.min, data.ps_stats.latest_max, data.ps_stats.latest_min, data.ps_stats.latest_avg));
-                });
             });
 
             // let data : &mut Data = &mut data_arc.lock().unwrap();
@@ -527,38 +521,46 @@ fn draw_chart(ui: &mut egui::Ui, data: &Data) {
                     .sizes(egui_extras::Size::relative(2f32.recip()), 2)
                     .horizontal(|mut hstrip| {
                         hstrip.cell(|ui| {
-                            let lc_points: Vec<[f64; 2]> = data
-                                .lc_all
-                                .iter()
-                                .skip(data.lc_all.len().checked_sub(data.latest_size).unwrap_or(0))
-                                .map(|p| [p.time as f64 / 1000.0, p.value])
-                                .collect();
-                            draw_plot(
-                                ui,
-                                "latest lc",
-                                vec![PlotData {
-                                    name: "Load Cell",
-                                    points: lc_points,
-                                    color: Color32::RED,
-                                }],
-                            );
+                            ui.vertical(|ui| {
+                                ui.label(format!("LC Stats: Max: {:.2}, Min: {:.2}, Latest Max: {:.2}, Latest Min: {:.2}, Latest Avg: {:.2}",
+                                                 data.lc_stats.max, data.lc_stats.min, data.lc_stats.latest_max, data.lc_stats.latest_min, data.lc_stats.latest_avg));
+                                let lc_points: Vec<[f64; 2]> = data
+                                    .lc_all
+                                    .iter()
+                                    .skip(data.lc_all.len().checked_sub(data.latest_size).unwrap_or(0))
+                                    .map(|p| [p.time as f64 / 1000.0, p.value])
+                                    .collect();
+                                draw_plot(
+                                    ui,
+                                    "latest lc",
+                                    vec![PlotData {
+                                        name: "Load Cell",
+                                        points: lc_points,
+                                        color: Color32::RED,
+                                    }],
+                                );
+                            });
                         });
                         hstrip.cell(|ui| {
-                            let ps_points: Vec<[f64; 2]> = data
-                                .ps_all
-                                .iter()
-                                .skip(data.ps_all.len().checked_sub(data.latest_size).unwrap_or(0))
-                                .map(|p| [p.time as f64 / 1000.0, p.value])
-                                .collect();
-                            draw_plot(
-                                ui,
-                                "latest ps",
-                                vec![PlotData {
-                                    name: "Pressure Sensor",
-                                    points: ps_points,
-                                    color: Color32::BLUE,
-                                }],
-                            );
+                            ui.vertical(|ui| {
+                                ui.label(format!("PS Stats: Max: {:.2}, Min: {:.2}, Latest Max: {:.2}, Latest Min: {:.2}, Latest Avg: {:.2}",
+                                                 data.ps_stats.max, data.ps_stats.min, data.ps_stats.latest_max, data.ps_stats.latest_min, data.ps_stats.latest_avg));
+                                let ps_points: Vec<[f64; 2]> = data
+                                    .ps_all
+                                    .iter()
+                                    .skip(data.ps_all.len().checked_sub(data.latest_size).unwrap_or(0))
+                                    .map(|p| [p.time as f64 / 1000.0, p.value])
+                                    .collect();
+                                draw_plot(
+                                    ui,
+                                    "latest ps",
+                                    vec![PlotData {
+                                        name: "Pressure Sensor",
+                                        points: ps_points,
+                                        color: Color32::BLUE,
+                                    }],
+                                );
+                            });
                         });
                     });
             });
