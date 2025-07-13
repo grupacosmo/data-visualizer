@@ -6,6 +6,7 @@ use serialport::{ErrorKind, SerialPort};
 use std::ops::RangeInclusive;
 use std::time::Duration;
 use std::{collections::VecDeque, fs, fs::File, io::{BufRead, BufReader}, sync::{Arc, Mutex}, thread};
+use std::char::REPLACEMENT_CHARACTER;
 use std::io::Write;
 
 pub const DEFAULT_CAPACITY: usize = 100_000;
@@ -195,18 +196,18 @@ impl VisualizerApp {
         }
         let mut reader = reader.unwrap();
 
-        let mut buffer = String::new();
+        let mut buffer = Vec::new();
 
         let mut last_time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_millis();
         println!("[PORT][INF]### Starting to read from port...");
-        let curr_date_time = Local::now().format("%Y-%m-%d--%H:%M:%S").to_string();
+        let curr_date_time = Local::now().format("%Y-%m-%d'T'%H:%M:%S").to_string();
         let mut output_file = std::fs::OpenOptions::new()
-            .create(true)
+            .create_new(true)
             .append(true)
-            .open(format!("~/data_{}", curr_date_time)).unwrap();
+            .open(format!("./data_{}", curr_date_time)).unwrap();
         loop {
             buffer.clear();
             if { data_arc.lock().unwrap().request_stop } {
@@ -215,15 +216,20 @@ impl VisualizerApp {
                 break;
             }
 
-            match reader.read_line(&mut buffer) {
+            match reader.read_until( b'\n', &mut buffer) {
                 Ok(0) => {
                     // EOF reached, exit the loop
                     eprintln!("[PORT][INF]### End of file reached.");
                     break;
                 }
                 Ok(_) => {
-                    output_file.write(buffer.as_bytes()).expect("TODO: panic message");
-                    Self::process_input_line(&data_arc, &buffer);
+                    let lossy_buffer = String::from_utf8_lossy(&buffer);
+                    if lossy_buffer.contains(REPLACEMENT_CHARACTER) {
+                        println!("[PORT][INF]### Lossless read: '{}' from '{:?}'", lossy_buffer, buffer);
+                    }
+                    let str_buffer = lossy_buffer.to_string();
+                    output_file.write(buffer.as_slice()).expect("TODO: panic message");
+                    Self::process_input_line(&data_arc, &str_buffer);
                     // let now = std::time::SystemTime::now()
                     //     .duration_since(std::time::UNIX_EPOCH)
                     //     .unwrap()
@@ -254,6 +260,10 @@ impl VisualizerApp {
         }
 
         let parts = line.split(',').collect::<Vec<&str>>();
+        if parts.len() < 3 {
+            eprintln!("[PORT][ERR]### Invalid line format: {}", line);
+            return;
+        }
         let t = parts[0];
         let time = parts[1].parse::<u64>();
         let value = parts[2].trim().parse::<f64>();
